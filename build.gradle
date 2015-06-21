@@ -1,3 +1,7 @@
+import groovyx.net.http.RESTClient
+import groovy.json.JsonSlurper
+import static groovyx.net.http.ContentType.JSON
+
 buildscript {
     ext {
         springBootVersion = '1.2.3.RELEASE'
@@ -23,6 +27,8 @@ allprojects {
         maven { url "https://repo.spring.io/snapshot" }
         maven { url "https://repo.spring.io/milestone" }
     }
+
+    ext.pactBrokerAddress = 'http://localhost:9000/'
 }
 
 subprojects {
@@ -43,6 +49,23 @@ project(':microservices-pact-consumer') {
         baseName = 'microservices-pact-consumer'
         version = '0.0.1-SNAPSHOT'
     }
+
+    task publishPacts << {
+        def pactDir = new File("${project.projectDir}/target/pacts/")
+        pactDir.eachFile { pactFile ->
+            def pact = new JsonSlurper().parseText(pactFile.text)
+            String brokerPath = "/pacts/provider/${pact.provider.name}/consumer/${pact.consumer.name}/version/${project.version}"
+            println "Publishing pact: " + brokerPath
+
+            def client = new RESTClient( pactBrokerAddress )
+            def resp = client.put(
+                    path : brokerPath,
+                    requestContentType: JSON,
+                    body : pact
+            )
+            println 'Attempt to send pact to broker returned status code: ' + resp.status
+        }
+    }
 }
 
 project(':microservices-pact-provider') {
@@ -58,7 +81,7 @@ project(':microservices-pact-provider') {
      */
     task setup << {
         ant.mkdir(dir: "${project.projectDir}/target/pacts")
-        ant.get(src: "http://localhost:9000/pacts/provider/Foo_Provider/consumer/Foo_Consumer/version/1.0.0",
+        ant.get(src: pactBrokerAddress + "pacts/provider/Foo_Provider/consumer/Foo_Consumer/version/1.0.0",
                 dest: "${project.projectDir}/target/pacts/Foo_Consumer-Foo_Provider.json")
     }
 
